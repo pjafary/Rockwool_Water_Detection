@@ -110,12 +110,6 @@ INPUT_CSV = Path(__file__).resolve().parent.parent / "Data" / "All_classes_raw_4
 
 Run `python Codes/plot_class_average_spectra.py`. Set `SHOW_STANDARD_DEVIATION = True` to display variability bands.
 
-## Reproducibility and scope
-
-The wavelength-optimization script referenced in the earlier documentation is not currently included; the available models use configured wavelength triplets. Select wavelengths and model settings using development data only, and retain the original sample assignments for comparisons. A retrospective split of previously explored samples should not be described as a newly collected independent dataset.
-
-This repository currently covers spectroscopy workflows; it does not include the LiDAR acquisition or robotic deployment software.
-
 ## License
 
 See [LICENSE](LICENSE) for the GNU General Public License v3.0.
