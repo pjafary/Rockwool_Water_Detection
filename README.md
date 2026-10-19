@@ -11,7 +11,7 @@ The files in [`Data/`](Data/) contain **1,100 spectra from 100 physical samples*
 | `Data/All_classes_raw_4dp.csv` | Unsmoothed spectra, rounded to four decimal places |
 | `Data/All_classes_smoothed_4dp.csv` | Smoothed spectra, rounded to four decimal places |
 | `Codes/rockwool_grouped_cv.py` | Compare six standalone classifiers and MLSD using sample-grouped five-fold CV |
-| `Codes/MLSD_60_20_20(1).py` | Develop and evaluate MLSD with a fixed sample-level 60/20/20 split |
+| `Codes/MLSD_60_20_20.py` | Develop and evaluate MLSD with a fixed sample-level 60/20/20 split |
 | `Codes/CNN1D_60_20_20.py` | Develop and evaluate the full-spectrum 1D-CNN using the same split |
 | `Codes/MLSD_preprocessing_sensitivity_60_20.py` | Compare seven preprocessing methods on the training and validation partitions |
 | `Codes/plot_class_average_spectra.py` | Export class-average spectra, standard deviations, and PNG/PDF plots |
@@ -64,7 +64,7 @@ Results are saved in a timestamped `rockwool_cv_*` folder. Start with `summary_m
 
 ## MLSD and CNN: 60/20/20 workflow
 
-These scripts require `physical_sample_split_60_20_20_seed42.csv`, which is **not currently included**. Place the original experiment's manifest in `Codes/`. It must contain the columns `physical_sample_id` and `split`, one row per sample, and exactly 60 `train`, 20 `validation`, and 20 `test` assignments. Reuse the same manifest across models; the seed alone does not reconstruct the original assignments.
+These scripts require `physical_sample_split_60_20_20_seed42.csv`, which can be modified based on your preference. Place the original experiment's manifest in `Codes/`. It must contain the columns `physical_sample_id` and `split`, one row per sample, and exactly 60 `train`, 20 `validation`, and 20 `test` assignments. Reuse the same manifest across models; the seed alone does not reconstruct the original assignments.
 
 Before the first run, edit the settings near the top of **both** training scripts:
 
@@ -76,7 +76,7 @@ RUN_MODE = "development"
 The checked-in scripts currently have `RUN_MODE = "final_test"`; development must first produce their frozen configuration files.
 
 ```bash
-python "Codes/MLSD_60_20_20(1).py"
+python "Codes/MLSD_60_20_20.py"
 python Codes/CNN1D_60_20_20.py
 ```
 
