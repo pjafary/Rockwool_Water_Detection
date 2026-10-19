@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""Leakage-safe full-spectrum 1D-CNN for rockwool VWC classification.
+"""Full-spectrum 1D-CNN for rockwool moisture classification.
 
-Development mode fits normalization using 60 training cubes, selects learning
-rate, weight decay, and stopping epoch using 20 validation cubes, and writes a
-frozen configuration without evaluating the test partition.
-
-Final-test mode verifies the frozen configuration, refits normalization and the
-network from scratch using the combined 80 development cubes for the frozen
-number of epochs, and evaluates the locked 20-cube test partition once.
+Development uses 60 training and 20 validation samples to select settings.
+Final testing refits on all 80 development samples and evaluates 20 held-out
+samples using the frozen settings. See README.md for setup and execution.
 """
 
 from __future__ import annotations
@@ -39,9 +35,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
 
-# ---------------------------------------------------------------------------
 # User settings
-# ---------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_CSV = SCRIPT_DIR / "All_classes_smoothed.csv"
 SPLIT_MANIFEST_CSV = SCRIPT_DIR / "physical_sample_split_60_20_20_seed42.csv"
@@ -57,11 +51,9 @@ MAX_EPOCHS = 250
 MIN_EPOCHS = 30
 EARLY_STOPPING_PATIENCE = 30
 EPOCH_REPORT_INTERVAL = 10
-NUM_WORKERS = 0  # Windows/VS Code safe
+NUM_WORKERS = 0  # Avoid worker spawning on Windows.
 BOOTSTRAP_ITERATIONS = 2000
 
-# The manuscript reports Adam learning rate 1e-3 and L2 weight decay 1e-4.
-# The validation grid includes those values and nearby alternatives.
 LEARNING_RATES = (1e-4, 5e-4, 1e-3)
 WEIGHT_DECAYS = (1e-5, 1e-4)
 
@@ -69,7 +61,6 @@ STANDARDIZE_SPECTRA = True
 STANDARD_DEVIATION_EPSILON = 1e-12
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Architecture reported in the manuscript.
 CONV1_FILTERS = 16
 CONV1_KERNEL = 7
 CONV2_FILTERS = 32

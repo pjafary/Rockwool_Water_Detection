@@ -1,66 +1,25 @@
 #!/usr/bin/env python3
-"""Compare six fixed-setting base learners and three-learner MLSD with grouped CV.
+"""Compare six standalone classifiers and MLSD with sample-grouped CV.
 
-INSTALL (Python >=3.10):
-    python -m pip install numpy pandas scipy scikit-learn matplotlib
-RUN:
-    python rockwool_grouped_cv.py --csv All_classes_smoothed.csv
-    python rockwool_grouped_cv.py --csv All_classes_smoothed.csv --window-nm 5
-    python rockwool_grouped_cv.py --csv data.csv --wavelengths 560 1600 1920
+Example:
+    python rockwool_grouped_cv.py --csv data.csv --window-nm 5
 
-INPUT: wide CSV, one wavelength column (case-insensitive), one column per
-spectrum, e.g. dry17, sub9-17, ..., sub0-17. All those spectra must actually
-come from physical sample 17. The script cannot establish that correspondence.
-Default ordinal class order: dry,sub9,sub8,...,sub0 (increasing moisture).
-Labels are NOT converted to VWC percentages because corrected means vary.
-Files must have identical wavelength grids. IDs are GLOBAL across input files;
-the same ID in different files remains the same physical sample.
+Input is a wide CSV with a wavelength column and spectra named dry17 or
+sub3-17. Matching IDs must represent the same physical sample across classes
+and files. Alternatively, --metadata accepts file,column,class,sample_id.
+Files must share a wavelength grid and every sample must have all classes.
 
-If names do not unambiguously encode true physical IDs, supply --metadata map.csv
-with columns file,column,class,sample_id; file is the input basename. It must
-contain exactly one row for every spectrum. Ambiguous names such as sub312 are
-rejected without metadata. Do not invent IDs from column order.
+All models use the same features and outer folds. MLSD combines RF, PLS-DA,
+and PCA-LDA using grouped OOF probabilities. Settings and wavelengths are
+fixed; this is development CV, not nested model selection. Prior selection
+using the same data can bias the evaluation.
 
-METHOD:
-* Randomly partition physical IDs into five nonoverlapping outer groups.
-* Use identical outer partitions, features and fixed base settings for models.
-* All imputation/scaling/PLS/PCA fitting occurs inside each training partition.
-* MLSD uses grouped inner five-fold OOF probabilities of RF, PLS-DA, PCA-LDA;
-  a fixed-C logistic meta-classifier is fitted on their concatenated outputs.
-  Refit base learners on the entire outer training set before outer evaluation.
-* No wavelength search, hyperparameter tuning, CNN, augmentation, smoothing,
-  final deployment fit, or separate holdout is performed here.
-* Default triplet is (570,1560,1940) nm; RWI=(Ra-(Rb-Rc))/(Ra+(Rb-Rc)).
-  Default input is ONE RWI feature for EVERY model. --window-nm 5 adds the
-  measured bands within +/-5 nm of each selected wavelength for EVERY model.
-  On a complete 1-nm grid this gives 34 features. No interpolation is performed.
-* Table 6 settings are used, except SVM probability=False: SVM is standalone
-  only, so no probabilities are needed. This avoids libsvm's ungrouped internal
-  probability-calibration CV and retains its native SVC class predictions.
-* PLS-DA follows Table 6: one-hot-target PLS, then logistic regression on scores.
-
-INTERPRETATION:
-This reproduces the fixed-setting development-stage CV described in the revised
-text. It does NOT remove prior selection bias if wavelengths, hyperparameters,
-or the three-learner ensemble were chosen using these same samples. The inner
-folds generate stacking inputs; they are NOT nested hyperparameter selection.
-Use a separate evaluation protocol for the independent-validation claim.
-
-OUTPUTS (new output directory required; default timestamped):
-summary_mean_sd.csv: unweighted outer-fold mean and sample SD (ddof=1).
-fold_metrics.csv, pooled_metrics.csv, per_class_by_fold.csv,
-per_class_pooled.csv: accuracy, macro P/R/F1, ordinal metrics, class supports.
-outer_predictions.csv: one outer-held-out prediction per spectrum per model.
-paired_comparison.csv: MLSD-minus-base outer-fold differences in percentage points.
-confusion_*.csv and confusion_matrices.png: pooled outer-held-out predictions.
-comparison.png: macro-F1 fold means +/- SD; not confidence intervals.
-outer_assignments.csv, split_audit.json, meta_oof_fold_*.csv: auditable splits.
-run_config.json, features.csv, sample_inventory.csv, README_results.txt.
-Metrics use fractions [0,1], except rank MAE and labelled percentage-point fields.
-Pooled metrics and unweighted fold means are distinct; do not interchange them.
-Every class must be present for each physical sample (replicates allowed), and
-every fit is checked for all classes. Unequal replicate counts weight spectra
-unequally; sample_inventory.csv makes this visible. Fold SD is not a CI.
+RWI alone is the default; --window-nm adds local reflectance bands. SVM uses
+native class predictions without internal probability calibration.
+Reports include fold mean/sample SD (ddof=1), pooled held-out metrics,
+predictions, confusion matrices, and split audits. Scores use fractions,
+except rank MAE and explicitly labelled percentage-point differences.
+Fold SD is not a confidence interval. See README.md for workflow details.
 """
 
 import argparse
@@ -104,7 +63,7 @@ class PLSDA(ClassifierMixin, BaseEstimator):
     def fit(self, X, y):
         self.classes_, encoded = np.unique(y, return_inverse=True)
         target = np.eye(len(self.classes_))[encoded]
-        # Rank cap avoids requesting more components than the training data allow.
+        # Cap components at the training-data rank.
         rank = np.linalg.matrix_rank(X - X.mean(axis=0))
         if rank == 0:
             raise ValueError("Training features have zero rank; check spectra/RWI.")
@@ -168,7 +127,7 @@ def load_data(paths, metadata_path, classes):
         raise ValueError("Input CSV basenames must be unique.")
     spectra, records, wavelengths = [], [], None
     for path in paths:
-        # Reject duplicate headers before pandas silently renames them.
+        # Check duplicates before pandas renames headers.
         import csv
         with path.open(encoding="utf-8-sig", newline="") as handle:
             header = next(csv.reader(handle))
@@ -248,7 +207,7 @@ def grouped_splits(y, groups, folds, seed, audit, context):
     if len(ids) < folds:
         raise ValueError(f"{context}: insufficient physical samples for {folds} folds")
     result = []
-    # KFold operates on unique physical IDs, NEVER on individual spectra.
+    # Split physical IDs, not individual spectra.
     for fold, (train_g, test_g) in enumerate(KFold(folds, shuffle=True, random_state=seed).split(ids), 1):
         train = np.flatnonzero(np.isin(groups, ids[train_g]))
         test = np.flatnonzero(np.isin(groups, ids[test_g]))
@@ -329,7 +288,7 @@ def main():
     audit = []
     splits = grouped_splits(y, groups, args.folds, args.seed, audit, "outer")
     out = args.output
-    out.mkdir(parents=True, exist_ok=False)  # Never silently overwrite an earlier run.
+    out.mkdir(parents=True, exist_ok=False)
     metadata.to_csv(out / "sample_inventory.csv", index=False)
     inventory.to_csv(out / "sample_class_counts.csv")
     pd.DataFrame({"feature": feature_names, "missing_count": np.isnan(X).sum(axis=0)}).to_csv(out / "features.csv", index=False)
@@ -381,7 +340,7 @@ def main():
         meta_model.fit(meta_train, yt)
         fitted = {}
         for name in BASE_NAMES:
-            # These exact fitted learners serve BOTH standalone and MLSD evaluation.
+            # Reuse these fitted learners for standalone and ensemble evaluation.
             fitted[name] = fit_model(name, Xt, yt, args.seed, args.jobs)
             predictions[name][test] = fitted[name].predict(X[test])
         meta_test = np.hstack([aligned_probabilities(fitted[name], X[test], k) for name in STACK_NAMES])
@@ -392,7 +351,6 @@ def main():
             fold_rows.append(row)
             class_rows.extend(class_metrics(y[test], pred, classes, name, fold))
             print(f"  {name:8s} macro-F1={row['macro_f1']:.4f}", flush=True)
-        # Checkpoint completed fold metrics and split audit.
         pd.DataFrame(fold_rows).to_csv(out / "fold_metrics.csv", index=False)
         (out / "split_audit.json").write_text(json.dumps(audit, indent=2), encoding="utf-8")
     if any((pred < 0).any() for pred in predictions.values()):

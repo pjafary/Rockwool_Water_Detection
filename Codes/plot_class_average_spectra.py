@@ -1,12 +1,6 @@
-"""Plot the mean reflectance spectrum of each VWC class.
+"""Export class-average reflectance spectra as PNG, PDF, and a mean/SD CSV.
 
-Expected CSV layout
--------------------
-Wavelength, dry-1, ..., dry-100, sub0-1, ..., sub9-100
-
-Place this script beside ``All_classes_smoothed.csv`` and run it in VS Code.
-The script saves a publication-quality PNG/PDF and a CSV containing the
-wavelength-wise mean and standard deviation for every class.
+Input columns: Wavelength, dry-1, ..., sub9-100. Configure INPUT_CSV below.
 """
 
 from pathlib import Path
@@ -18,9 +12,7 @@ import numpy as np
 import pandas as pd
 
 
-# ---------------------------------------------------------------------------
 # User settings
-# ---------------------------------------------------------------------------
 INPUT_CSV = Path(__file__).with_name("All_classes_raw.csv")
 OUTPUT_DIR = Path(__file__).with_name("class_average_results_raw")
 
@@ -32,7 +24,6 @@ STD_ALPHA = 0.10
 FIGURE_DPI = 600
 
 
-# Physical VWC order used in the experiment.
 CLASS_ORDER = ["dry"] + [f"sub{i}" for i in range(9, -1, -1)]
 VWC_BY_CLASS = {
     "dry": 0,
@@ -61,7 +52,6 @@ def identify_class_columns(columns):
             sample_number = int(match.group(2))
             groups.setdefault(class_name, []).append((sample_number, column))
 
-    # Sort samples numerically so sample 10 does not appear before sample 2.
     return {
         class_name: [column for _, column in sorted(items)]
         for class_name, items in groups.items()
@@ -89,7 +79,6 @@ def main():
     if WAVELENGTH_MAX is not None:
         data = data.loc[data["Wavelength"] <= WAVELENGTH_MAX]
 
-    # Plot wavelengths from low to high even if the original CSV is descending.
     data = data.sort_values("Wavelength").reset_index(drop=True)
 
     class_columns = identify_class_columns(data.columns)
@@ -103,7 +92,6 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     summary = pd.DataFrame({"Wavelength": data["Wavelength"]})
 
-    # Brown (dry) through teal/blue (wet) gives an intuitive moisture sequence.
     moisture_cmap = LinearSegmentedColormap.from_list(
         "rockwool_moisture", ["#8C510A", "#DFC27D", "#80CDC1", "#01665E"]
     )

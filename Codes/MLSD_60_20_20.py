@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
-"""Leakage-safe Multi-Learner Spectral Drought (MLSD) stacking model.
+"""MLSD stacking with physical-sample-grouped training and evaluation.
 
-Development mode performs nested, physical-sample-grouped base-learner tuning,
-generates exactly one out-of-fold (OOF) probability vector for every training
-observation, tunes a multinomial logistic-regression meta-learner using those
-OOF features, and evaluates the frozen stack on the validation partition.
-
-Final-test mode reloads the frozen choices, creates development-set OOF features
-without retuning, refits the base learners on train+validation, and evaluates
-the locked test once. The test set is never used for wavelength, learner,
-hyperparameter, or meta-learner selection.
+Development tunes base learners within grouped OOF folds and trains the
+meta-classifier on OOF probabilities. Final testing refits the frozen stack
+on train + validation samples before evaluating the held-out test samples.
+See README.md for setup and execution.
 """
 
 from __future__ import annotations
@@ -49,17 +44,14 @@ from sklearn.utils.multiclass import unique_labels
 from sklearn.utils.validation import check_is_fitted
 
 
-# ---------------------------------------------------------------------------
 # User settings
-# ---------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_CSV = SCRIPT_DIR / "All_classes_smoothed.csv"
 SPLIT_MANIFEST_CSV = SCRIPT_DIR / "physical_sample_split_60_20_20_seed42.csv"
 OUTPUT_ROOT = SCRIPT_DIR / "results_MLSD_60_20_20_3nm_bands"
 FROZEN_CONFIG_JSON = OUTPUT_ROOT / "frozen_MLSD_config.json"
 
-# Run development first. Use final_test only after every RWI, base-learner,
-# ablation, stacking, and meta-learner decision is frozen.
+# Run development first; freeze all model choices before final_test.
 RUN_MODE = "final_test"  # "development" or "final_test"
 ALLOW_COMPLETED_TEST_RERUN = False
 
@@ -71,8 +63,6 @@ N_JOBS = -1
 SCORING = "f1_macro"
 BOOTSTRAP_ITERATIONS = 2000
 
-# Final MLSD configuration described by the manuscript's ablation result.
-# PCA_LDA is used instead of the technically incorrect SIMCA label.
 BASE_LEARNERS = ("RF", "PLS_DA", "PCA_LDA")
 META_C_VALUES = (0.01, 0.1, 1.0, 10.0, 100.0)
 
@@ -403,12 +393,7 @@ def tune_one_model(
     inner_splits = make_grouped_splits(
         X, y, groups, INNER_TUNING_FOLDS, seed
     )
-    # PCA and PLS cannot use more latent components than there are input
-    # features (and PCA is also bounded by the number of fitting rows).  The
-    # engineered 3 nm-band feature set currently has only 10 columns, while
-    # the broader PCA search grid also contains 15--30 components.  Filter
-    # those impossible candidates instead of allowing GridSearchCV's
-    # error_score="raise" to abort the entire run.
+    # Remove component counts that exceed the fitting data dimensions.
     smallest_fit_size = min(len(fit_indices) for fit_indices, _ in inner_splits)
     max_components = min(X.shape[1], smallest_fit_size)
     valid_grid = {name: list(values) for name, values in grid.items()}

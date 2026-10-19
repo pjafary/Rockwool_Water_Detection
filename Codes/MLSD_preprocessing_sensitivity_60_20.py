@@ -1,18 +1,10 @@
 #!/usr/bin/env python3
-"""MLSD spectral-preprocessing sensitivity analysis.
+"""Compare spectral preprocessing methods using MLSD.
 
-This development-only analysis compares preprocessing strategies using the
-fixed 60-cube training and 20-cube validation partitions. The locked 20-cube
-test partition is verified but never fitted, transformed, predicted, or scored.
-
-Each preprocessing method is placed inside every base-learner pipeline. Thus,
-MSC reference spectra, scaling, PCA, and classifier parameters are learned only
-from the applicable training fold. The MLSD stack uses nested group-aware OOF
-probabilities and a multinomial logistic-regression meta-learner.
-
-IMPORTANT: SOURCE_DATA_CSV must contain the UNSMOOTHED spectra. Supplying the
-already moving-average-smoothed file would compare additional transformations
-after smoothing rather than compare alternative preprocessing strategies.
+Use unsmoothed spectra and the fixed 60/20/20 sample manifest. Only the
+training and validation partitions are evaluated; the test partition is
+excluded. Preprocessing is fitted within each training fold, including the
+MSC reference spectrum. See README.md for setup and execution.
 """
 
 from __future__ import annotations
@@ -53,18 +45,15 @@ from sklearn.utils.multiclass import unique_labels
 from sklearn.utils.validation import check_is_fitted
 
 
-# ---------------------------------------------------------------------------
 # User settings
-# ---------------------------------------------------------------------------
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# Point this to the original combined UNSMOOTHED spectra file.
+# Use unsmoothed spectra for preprocessing comparisons.
 SOURCE_DATA_CSV = SCRIPT_DIR / "All_classes_raw.csv"
 SPLIT_MANIFEST_CSV = SCRIPT_DIR / "physical_sample_split_60_20_20_seed42.csv"
 OUTPUT_ROOT = SCRIPT_DIR / "results_MLSD_preprocessing_sensitivity"
 
-# This safeguard must remain False for the reviewer-facing comparison. Change
-# it only for a clearly labelled diagnostic run on already smoothed data.
+# Keep False when comparing preprocessing methods on raw spectra.
 INPUT_IS_ALREADY_MOVING_AVERAGED = False
 ALLOW_ALREADY_PREPROCESSED_INPUT = False
 
@@ -76,13 +65,12 @@ N_JOBS = -1
 SCORING = "f1_macro"
 BOOTSTRAP_ITERATIONS = 2000
 
-# Updated leakage-safe wavelength result and the user's reduced ±1 nm windows.
 RWI_WAVELENGTHS_NM = (560.0, 1600.0, 1920.0)
 WINDOW_HALF_WIDTH_NM = 1
 WAVELENGTH_TOLERANCE_NM = 0.51
 DENOMINATOR_EPSILON = 1e-12
 
-# Manuscript baseline: i=1 gives a three-point moving-average window.
+# Half-width 1 gives a three-point moving average.
 MOVING_AVERAGE_HALF_WIDTH = 1
 SAVGOL_WINDOW_LENGTH = 3
 SAVGOL_POLYORDER = 2
@@ -943,7 +931,7 @@ def main() -> None:
     manifest = load_split_manifest(SPLIT_MANIFEST_CSV, np.unique(groups))
     masks = create_masks(groups, manifest)
 
-    # Deliberately exclude the locked test partition from every analysis object.
+    # Exclude test samples from the sensitivity analysis.
     X_train = spectra[masks["train"]]
     y_train = y[masks["train"]]
     groups_train = groups[masks["train"]]
